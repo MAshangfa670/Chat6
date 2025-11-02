@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Seedream4 对话生图（iPhone竖屏版）</title>
+  <style>
+    :root{
+      --bg:#0f1115;
+      --panel:#16191f;
+      --accent:#3b82f6;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --bot:#1f2430;
+      --user:#0f766e;
+      --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",sans-serif;}
+    .wrap{display:flex;flex-direction:column;height:100vh;max-width:480px;margin:0 auto;}
+    .topbar{
+      display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+      padding:10px;background:var(--panel);
+      border-bottom:1px solid #20232b;position:sticky;top:0;z-index:10;
+    }
+    .topbar input,.topbar select{flex:1;min-width:120px;background:#0b0d12;color:var(--text);border:1px solid #2a2f3a;border-radius:6px;padding:8px;font-size:14px;}
+    .btn{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 10px;font-size:14px}
+    .btn.danger{background:var(--danger)}
+    .chat{flex:1;overflow-y:auto;padding:12px;background:var(--bg);}
+    .bubble{max-width:86%;padding:10px 12px;border-radius:14px;margin:10px 0;word-break:break-word;box-shadow:0 2px 6px rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.06);}
+    .role-user{background:#0b3b37;align-self:flex-end;margin-left:auto;}
+    .role-bot{background:var(--bot);align-self:flex-start;margin-right:auto;}
+    .meta{font-size:12px;color:var(--muted);margin-top:6px}
+    .imgs{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+    .imgs img{width:100%;max-width:160px;border-radius:10px;border:1px solid #2a2f3a}
+    .save-btn{display:block;width:100%;margin-top:6px;background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer}
+    .composer{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid #20232b;padding:8px;display:flex;flex-direction:column;gap:6px}
+    .composer textarea{flex:1;border:1px solid #2a2f3a;border-radius:8px;padding:8px;font-size:16px;resize:none;background:#0b0d12;color:var(--text);}
+    .composer .actions{display:flex;gap:8px;align-items:center}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <input id="apiKey" type="password" placeholder="Kie AI API Key" />
+    <select id="size">
+      <option value="square_hd">1:1</option>
+      <option value="portrait_4_3">3:4</option>
+      <option value="portrait_3_2">2:3</option>
+      <option value="portrait_16_9">9:16</option>
+      <option value="landscape_16_9">16:9</option>
+    </select>
+    <select id="res">
+      <option value="1K">1K</option>
+      <option value="2K" selected>2K</option>
+      <option value="4K">4K</option>
+    </select>
+    <select id="count">
+      <option value="1" selected>1图</option>
+      <option value="2">2图</option>
+      <option value="3">3图</option>
+      <option value="4">4图</option>
+    </select>
+    <button id="clear" class="btn danger">清空记录</button>
+  </div>
+
+  <div id="chat" class="chat"></div>
+
+  <div class="composer">
+    <textarea id="prompt" placeholder="输入提示词..."></textarea>
+    <div class="actions">
+      <button id="send" class="btn" style="flex:1">发送并生成</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const store = {load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}},save(k,v){localStorage.setItem(k,JSON.stringify(v))}};
+const KEY_HISTORY="seedream_chat_v2_history",KEY_API="seedream_chat_v2_api";
+const elChat=document.getElementById('chat'),elAPI=document.getElementById('apiKey'),elPrompt=document.getElementById('prompt');
+const elSend=document.getElementById('send'),elClear=document.getElementById('clear'),elSize=document.getElementById('size'),elRes=document.getElementById('res'),elCount=document.getElementById('count');
+let history=store.load(KEY_HISTORY,[]);elAPI.value=store.load(KEY_API,"");
+
+function scrollToBottom(){elChat.scrollTop=elChat.scrollHeight}
+function addBubble({role,text,images,ts}){
+  const div=document.createElement('div');div.className='bubble '+(role==='user'?'role-user':'role-bot');
+  let html='';if(text)html+=`<div>${text}</div>`;
+  if(images&&images.length){html+='<div class="imgs">'+images.map(u=>`
+    <div>
+      <img src="${u}" />
+      <button class="save-btn" onclick="downloadImage('${u}')">保存图片</button>
+    </div>`).join('')+'</div>';}
+  html+=`<div class="meta">${role==='user'?'你':'Seedream'} · ${new Date(ts||Date.now()).toLocaleTimeString()}</div>`;
+  div.innerHTML=html;elChat.appendChild(div);scrollToBottom();
+}
+function renderAll(){elChat.innerHTML='';history.forEach(addBubble);scrollToBottom()}
+function pushHistory(i){history.push(i);store.save(KEY_HISTORY,history)}
+async function downloadImage(url){
+  const a=document.createElement('a');a.href=url;a.download='seedream_image.jpg';document.body.appendChild(a);a.click();a.remove();}
+
+async function send(){
+  const key=elAPI.value.trim();if(!key){alert("请填写API Key");elAPI.focus();return;}
+  store.save(KEY_API,key);
+  const prompt=elPrompt.value.trim();if(!prompt)return;
+  const num=parseInt(elCount.value)||1;
+  const userMsg={role:'user',text:`${prompt}（${num}张）`,ts:Date.now()};addBubble(userMsg);pushHistory(userMsg);
+  elPrompt.value='';
+  const wait={role:'bot',text:'正在生成图像...',ts:Date.now()};addBubble(wait);pushHistory(wait);
+  try{
+    const resp=await fetch('https://api.kie.ai/api/v1/jobs/createTask',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+      body:JSON.stringify({model:"bytedance/seedream-v4-text-to-image",input:{prompt,image_size:elSize.value,image_resolution:elRes.value,max_images:num}})});
+    const data=await resp.json();if(data.code!==200){addBubble({role:'bot',text:'创建任务失败:'+data.message,ts:Date.now()});return;}
+    const taskId=data.data.taskId;let done=false;for(let i=0;i<40&&!done;i++){await new Promise(r=>setTimeout(r,2500));
+      const s=await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,{headers:{'Authorization':`Bearer ${key}`}});const j=await s.json();
+      if(j.code===200){const st=j.data.state;if(st==='success'){const r=JSON.parse(j.data.resultJson||'{}');const urls=r.resultUrls||[];
+        addBubble({role:'bot',text:'生成完成 ✅',images:urls,ts:Date.now()});pushHistory({role:'bot',text:'生成完成 ✅',images:urls,ts:Date.now()});done=true;}
+        else if(st==='fail'){addBubble({role:'bot',text:'❌生成失败',ts:Date.now()});done=true;}}
+    }
+  }catch(e){addBubble({role:'bot',text:'异常:'+e.message,ts:Date.now()})}
+}
+elSend.onclick=send;elClear.onclick=()=>{if(confirm('确定清空?')){history=[];store.save(KEY_HISTORY,history);renderAll()}};
+elPrompt.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+renderAll();
+</script>
+</body>
+</html>
